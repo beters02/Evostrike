@@ -35,6 +35,10 @@ local function calculateAccuracy(self, target)
 		if self.aiming then accuracy += options.scopeAccuracy else accuracy += options.unscopeAccuracy end
 	end
 	
+	if currentBullet == 1 and options.firstBulletAccuracy then
+		accuracy = 0
+	end
+
 	if jumping then -- movement check
 		accuracy += options.jumpingAccuracy
 	elseif vel >= MovementSettings.runInaccSpeed then
@@ -43,8 +47,6 @@ local function calculateAccuracy(self, target)
 		accuracy += options.runningAccuracy
 	elseif crouching then
 		accuracy *= .2
-	elseif currentBullet == 1 and options.firstBulletAccuracy and vel <= 1 then
-		accuracy = 0
 	else
 		accuracy *= accuracyModifier
 	end
