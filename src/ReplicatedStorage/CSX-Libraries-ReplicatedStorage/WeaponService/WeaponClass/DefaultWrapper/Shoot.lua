@@ -207,7 +207,7 @@ local function calculateRecoilVector(self, sprayPatternTable)
 	return newVec2, Vector2.new(oldX, oldY)
 end
 
-local function shoveRecoilCamera(self, sprayPatternTable, x, y)
+local function setCameraRecoilVar(self, sprayPatternTable, x, y)
 	task.spawn(function()
 		local shovX = if self.currentBullet ~= 1 and lastShovVec2.X ~= 0 and x == 0 then lastShovVec2.X else x * .09
 		local shovY = if self.currentBullet ~= 1 and lastShovVec2.Y ~= 0 and y == 0 then lastShovVec2.Y else y * .09
@@ -235,7 +235,7 @@ local module = function(self)
 		local recPatTab = getRecoilPatternTable(self)
 		local target, addition = calculateRecoilVector(self, recPatTab)
 		target = calculateAccuracy(self, target)
-		shoveRecoilCamera(self, recPatTab, addition.X, addition.Y)
+		setCameraRecoilVar(self, recPatTab, addition.X, addition.Y)
 		local unitRay = camera:ScreenPointToRay(target.X, target.Y)
 		local damage
 		damage, dec = wallbangRaycast(unitRay, dec, self.options.baseDamage) -- get preset damage from wallbang raycast

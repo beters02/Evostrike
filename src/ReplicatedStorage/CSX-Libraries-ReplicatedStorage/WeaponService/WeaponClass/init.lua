@@ -16,14 +16,15 @@ local FESpring = require(Libraries:WaitForChild("FESpring"))
 -- VARIABLES --
 --
 
-local WeaponIconsFolder = GunsRS:WaitForChild("Assets"):WaitForChild("Images"):WaitForChild("WeaponIcons")
+local cameraUpdateRate = 1/60
 
+local WeaponIconsFolder = GunsRS:WaitForChild("Assets"):WaitForChild("Images"):WaitForChild("WeaponIcons")
 local wrappers = {
 	Default = script:WaitForChild("DefaultWrapper"),
 	Knife = script:WaitForChild("KnifeWrapper")
 }
-local service = script.Parent
 
+local service = script.Parent
 local weapon = {}
 weapon.__index = weapon
 
@@ -45,6 +46,7 @@ function weapon.new(weaponInfoTable, player)
 	t.fireCameraSpring.d = 0.8
 	t.fireCameraSwitch = false
 	t.fireCameraShove = Vector2.zero
+	t.nextFireTick = 0
 
 	t.xMultiplier = 2.6
 	t.yMultiplier = 2
@@ -61,6 +63,8 @@ function weapon.new(weaponInfoTable, player)
 	t.soundsFolder = GunsRS:WaitForChild("Assets"):WaitForChild("Sounds"):WaitForChild("Weapons"):WaitForChild(t.weaponName)
 	t.serverScript = t.tool:WaitForChild("WeaponServerScript")
 	t.fireEvent = t.serverScript:WaitForChild("FireEvent")
+	t.reloadEvent = t.serverScript:WaitForChild("ReloadEvent")
+	t.customDamageEvent = t.serverScript:WaitForChild("CustomDamageEvent")
 
 	t.fireRate = t.options.fireRate
 	t.currentBullet = 1
@@ -114,6 +118,8 @@ function weapon:actionInputBegan(input, gp)
 	if gp then return end
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		self:fire(true)
+	elseif input.KeyCode == Enum.KeyCode.R then
+		self:reload()
 	end
 end
 
@@ -133,15 +139,12 @@ function weapon:equipInputBegan(input, gp)
 	end
 end
 
-local cameraUpdateRate = 1/60
-
 function weapon:cameraUpdate(dt)
 	if not self.cameraUpdateAccumulated then self.cameraUpdateAccumulated = dt end
 	self.cameraUpdateAccumulated += dt
 	while self.cameraUpdateAccumulated >= cameraUpdateRate do
 		self.cameraUpdateAccumulated -= cameraUpdateRate
 		local spring = self.fireCameraSpring
-		print(self.fireCameraSwitch)
 		if self.fireCameraSwitch then
 			self.fireCameraSwitch = false
 			task.spawn(function()
@@ -179,22 +182,43 @@ function weapon:equip(bool)
 	end
 end
 
+
 function weapon:fire(bool)
 	if bool then
+		if tick() < self.nextFireTick then return end -- if player is on fireRate cooldown
+		if not self.equipped then return end
+		if self.reloading then return end
+		if self.tool:GetAttribute("Magazine") <= 0 then
+			self:reload()
+			return
+		end
 		if not self.options.automatic then -- non automatic weapon fire
 			(require(self.wrapper).fire or require(wrappers.Default.Shoot))(self)
 			return
 		end
-		local nextFireTick = tick() -- automatic weapon fire
+		self.nextFireTick = tick() -- automatic weapon fire
 		self.fireLoop = RunService.RenderStepped:Connect(function()
-			if tick() >= nextFireTick then
+			if self.tool:GetAttribute("Magazine") <= 0 then
+				self:reload()
+				self.fireLoop:Disconnect()
+				return
+			end
+			if tick() >= self.nextFireTick then
 				(require(self.wrapper).fire or require(wrappers.Default.Shoot))(self)
-				nextFireTick = tick() + self.fireRate
+				self.nextFireTick = tick() + self.fireRate
 			end
 		end)
 	else
 		if self.fireLoop then self.fireLoop:Disconnect() end
 	end
+end
+
+function weapon:reload()
+	if self.reloading then return end
+	if not self.equipped then return end
+	if self.firing then return end
+	if self.tool:GetAttribute("TotalAmmo") <= 0 then return end
+	(require(self.wrapper).reload or require(wrappers.Default).reload)(self)
 end
 
 return weapon

@@ -63,8 +63,9 @@ function WeaponService.AddWeapon(weaponName, player)
 		local serverScript = script:WaitForChild("WeaponServerScript"):Clone() -- generate scripts
 		serverScript.Enabled = true
 		serverScript.Parent = tool
-		local fireEvent = Instance.new("RemoteEvent", serverScript)
-		fireEvent.Name = "FireEvent"
+		for i, v in pairs({"Fire", "Reload", "CustomDamage"}) do
+			Instance.new("RemoteEvent", serverScript).Name = v .. "Event"
+		end
 		local toolObject = Instance.new("ObjectValue", serverScript)
 		toolObject.Value = tool
 		toolObject.Name = "ToolObject"
@@ -73,6 +74,7 @@ function WeaponService.AddWeapon(weaponName, player)
 		weaponOptionsObject.Value = weaponFolders.Options
 		tool:SetAttribute("Magazine", require(weaponFolders.Options).magazineSize)
 		tool:SetAttribute("TotalAmmo", require(weaponFolders.Options).totalAmmo)
+		tool:SetAttribute("WeaponName", weaponName)
 	end
 	print("Unable to add weapon " .. weaponName .. "!")
 	return false

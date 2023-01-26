@@ -7,6 +7,8 @@ local Run = game:GetService("RunService")
 --
 
 local fireEvent = script:WaitForChild("FireEvent")
+local reloadEvent = script:WaitForChild("ReloadEvent")
+local customDamageEvent = script:WaitForChild("CustomDamageEvent")
 local tool = script:WaitForChild("ToolObject").Value
 if not tool then
 	repeat task.wait() until script.ToolObject.Value
@@ -45,9 +47,6 @@ local function subtractAmmo()
 	if CurrentAmmo.Magazine <= 0 then
 		return ""
 	end
-	if CurrentAmmo.Total <= 0 then
-		return ""
-	end
 	CurrentAmmo.Magazine -= 1
 	return true
 end
@@ -68,6 +67,14 @@ local function calculateDamage(instance)
 	return damage
 end
 
+local function setRagdollProperties(instance, norm)
+	local hitChar = instance:FindFirstAncestorWhichIsA("Model")
+	if hitChar and hitChar:FindFirstChild("Humanoid") then
+		hitChar:SetAttribute("bulletRagdollNormal", Vector3.new(-norm.X, -norm.Y + -1, -norm.Z))
+		hitChar:SetAttribute("lastHitPart", instance.Name)
+	end
+end
+
 local function heartbeat()
 	replicateAmmo()
 end
@@ -84,5 +91,35 @@ local function calculateWeaponFire(player, instance, position, normal, material)
 	print(instance)
 end
 
+local function calculateReloadAmmo()
+	local DefMagSize = weaponOptions.magazineSize
+	local need = DefMagSize - CurrentAmmo.Magazine
+	if need <= CurrentAmmo.Total then
+		CurrentAmmo.Magazine = DefMagSize
+		CurrentAmmo.Total -= need
+	elseif need > CurrentAmmo.Total then
+		CurrentAmmo.Magazine += CurrentAmmo.Total
+		CurrentAmmo.Total = 0
+	end
+	print(CurrentAmmo.Magazine)
+	print(CurrentAmmo.Total)
+end
+
+local function calculateCustomDamage(player, damage, instance)
+	local char, humanoid = isHumanoid(instance)
+	if char then
+		humanoid:TakeDamage(calculateDamage(instance))
+	end
+end
+
 Run.Heartbeat:Connect(heartbeat)
-fireEvent.OnServerEvent:Connect(calculateWeaponFire)
+fireEvent.OnServerEvent:Connect(function(player, instance, position, normal, material)
+	task.spawn(function()
+		calculateWeaponFire(player, instance, position, normal, material)
+	end)
+	task.spawn(function()
+		setRagdollProperties(instance, normal)
+	end)
+end)
+reloadEvent.OnServerEvent:Connect(calculateReloadAmmo)
+customDamageEvent.OnServerEvent:Connect(calculateCustomDamage)

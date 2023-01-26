@@ -130,4 +130,17 @@ function module.unequip(self)
 	self.icons.unequipped.Visible = true
 end
 
+function module.reload(self)
+
+	self.reloading = true
+	task.delay(self.options.reloadRate, function()
+		self.reloading = false
+		self.reloadEvent:FireServer()
+		print('fired!')
+	end)
+
+	self.animations.Local.Reload:Play()
+
+end
+
 return module
