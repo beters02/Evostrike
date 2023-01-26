@@ -13,11 +13,13 @@ local HitSounds = {LocalHeadshot = GunSounds:WaitForChild("LocalHeadshot"), Loca
 local player = P.LocalPlayer
 local camera = workspace.CurrentCamera
 
-local Temp = GameSpace:WaitForChild("Temp")
+local Temp = GameSpace:WaitForChild("Temporary")
 local Shields = GameSpace:WaitForChild("Shields")
 local Spawns = GameSpace:WaitForChild("Spawns")
 local ClipBoxes = GameSpace:WaitForChild("Map"):WaitForChild("ClipBoxes")
 local NoBulletCollision = GameSpace.Map:FindFirstChild("NoBulletCollision")
+
+local playSoundServer = GunsRS:WaitForChild("Events"):WaitForChild("Remote"):WaitForChild("playSoundServer")
 
 local function calculateAccuracy(self, target)
 	
@@ -77,7 +79,7 @@ end
 
 local function playEmitterSmart(result)
 	task.spawn(function()
-		local hitChar = result.Instance.Parent
+		local hitChar = result.Instance:FindFirstAncestorWhichIsA("Model")
 		if hitChar and hitChar:FindFirstChild("Humanoid") then
 			if hitChar.Humanoid.Health <= 0 then return end
 			if string.match(result.Instance.Name, "Head") then
@@ -106,7 +108,7 @@ local playHitSoundFunctions = {
 local function playHitSound(result)
 	task.spawn(function()
 		local instance = result.Instance
-		local parent = instance.Parent
+		local parent = instance:FindFirstAncestorWhichIsA("Model")
 		if parent and parent:FindFirstChild("Humanoid") then
 			if parent.Humanoid.Health <= 0 then return end
 			if string.match(instance.Name, "Head") then
@@ -148,9 +150,11 @@ local function wallbangRaycast(unitRay, dec, damage)
 	local valid = false
 	local wallsScript = require(RS["CSX-Guns-ReplicatedStorage"].Settings.frameworkSettings).walls
 	
-	for i, v in pairs(wallsHit) do
-		local index = table.find(wallsScript, v[2]) 
-		damage = (index and (damage - damage * wallsScript[index])) or damage * .7
+	if wallsHit then
+		for i, v in pairs(wallsHit) do
+			local index = table.find(wallsScript, v[2]) 
+			damage = (index and (damage - damage * wallsScript[index])) or damage * .7
+		end
 	end
 
 	return damage, dec
@@ -173,7 +177,14 @@ local module = function(self)
 	if NoBulletCollision then table.insert(dec, NoBulletCollision) end
 	local unitRay = self.camera:ScreenPointToRay(target.X, target.Y)
 
-	task.spawn(function()
+	task.spawn(function() -- animations & sounds
+		self.animations.Local.Fire:Play()
+		local fireSound = self.soundsFolder.Fire
+		Sound:PlayLocalSound(fireSound)
+		playSoundServer:FireServer(fireSound, player.Character.Head)
+	end)
+
+	task.spawn(function() -- bullet registration
 		local damage
 		damage, dec = wallbangRaycast(unitRay, dec, self.options.baseDamage) -- get preset damage from wallbang raycast
 		local mainResult = bulletRaycast(unitRay, dec)

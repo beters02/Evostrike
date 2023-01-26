@@ -46,6 +46,7 @@ function weapon.new(weaponInfoTable, player)
 	t.tool = weaponInfoTable.tool
 	t.serverModel = weaponInfoTable.serverModel
 	t.animationsFolder = weaponInfoTable.animationsFolder
+	t.soundsFolder = GunsRS:WaitForChild("Assets"):WaitForChild("Sounds"):WaitForChild("Weapons"):WaitForChild(t.weaponName)
 	t.serverScript = t.tool:WaitForChild("WeaponServerScript")
 	t.fireEvent = t.serverScript:WaitForChild("FireEvent")
 	
@@ -137,7 +138,7 @@ end
 
 function weapon:fire(bool)
 	if bool then
-		(require(self.wrapper).fire or require(wrappers.Default).fire)(self)
+		(require(self.wrapper).fire or require(wrappers.Default.Shoot))(self)
 	else
 		
 	end

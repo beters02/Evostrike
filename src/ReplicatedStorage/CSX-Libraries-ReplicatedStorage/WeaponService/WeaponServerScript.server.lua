@@ -53,8 +53,8 @@ local function subtractAmmo()
 end
 
 local function isHumanoid(instance)
-	local parent = instance.Parent
-	if parent:IsA("Model") and parent:FindFirstChild("Humanoid") then
+	local parent = instance:FindFirstAncestorWhichIsA("Model")
+	if parent and parent:FindFirstChild("Humanoid") then
 		return parent, parent.Humanoid
 	end
 	return false
