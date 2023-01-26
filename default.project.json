@@ -1,0 +1,11 @@
+{
+  "name": "Evostrike",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "$path": "src/ReplicatedStorage"
+    }
+
+  }
+}
