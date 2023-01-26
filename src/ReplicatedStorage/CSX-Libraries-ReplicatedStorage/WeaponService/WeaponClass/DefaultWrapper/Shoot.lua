@@ -13,6 +13,12 @@ local HitSounds = {LocalHeadshot = GunSounds:WaitForChild("LocalHeadshot"), Loca
 local player = P.LocalPlayer
 local camera = workspace.CurrentCamera
 
+local curshots = 0
+local curVec2 = Vector2.zero
+local lastClickTick = tick()
+local lastShovVec2 = Vector2.zero
+local curShovVec2 = Vector2.zero
+
 local Temp = GameSpace:WaitForChild("Temporary")
 local Shields = GameSpace:WaitForChild("Shields")
 local Spawns = GameSpace:WaitForChild("Spawns")
@@ -169,13 +175,54 @@ local function bulletRaycast(unitRay, dec)
 	return result
 end
 
+local function calculateVectorVec2(self, x, y)
+	local newx = (x * self.xMultiplier) + curVec2.X 
+	local newy = (y * self.yMultiplier) + curVec2.Y 
+	curVec2 = Vector2.new(newx, newy)
+	return Vector2.new(newx, newy)
+end
+
+local function getRecoilPatternTable(self)
+	curshots = (tick() - lastClickTick >= self.options.recoilReset and 1 or curshots + 1)
+	lastClickTick = tick()
+	local sprayPatternTable = self.options.sprayPattern[curshots]
+	self.currentBullet = curshots
+	return sprayPatternTable
+end
+
+local function calculateRecoilVector(self, sprayPatternTable)
+	local oldX = sprayPatternTable[2]
+	local oldY = sprayPatternTable[3]
+	local x = oldX
+	local y = oldY
+	local mos = self.player:GetMouse()
+	local fromPos = Vector2.new(mos.X, mos.Y)
+	if self.currentBullet == 1 then curVec2 = Vector2.zero end -- reset vector addition if spray has been reset
+	if self.options.firstBulletAccuracy and curshots == 1 then
+		x = 0
+		y = 0
+	end
+	local oldVec2 = calculateVectorVec2(self, x, y)
+	local newVec2 = Vector2.new(-oldVec2.X + fromPos.X, -oldVec2.Y + fromPos.Y)
+	return newVec2, Vector2.new(oldX, oldY)
+end
+
+local function shoveRecoilCamera(self, sprayPatternTable, x, y)
+	task.spawn(function()
+		local shovX = if self.currentBullet ~= 1 and lastShovVec2.X ~= 0 and x == 0 then lastShovVec2.X else x * .09
+		local shovY = if self.currentBullet ~= 1 and lastShovVec2.Y ~= 0 and y == 0 then lastShovVec2.Y else y * .09
+		lastShovVec2 = Vector2.new(shovX, shovY)
+		self.fireCameraShove = lastShovVec2
+		self.fireCameraSwitch = true
+	end)
+end
+
 local module = function(self)
 	
 	local mos = self.player:GetMouse()
 	local target = calculateAccuracy(self, Vector2.new(mos.X, mos.Y))
 	local dec = {self.player.Character, self.camera, Temp, Shields, Spawns, ClipBoxes}
 	if NoBulletCollision then table.insert(dec, NoBulletCollision) end
-	local unitRay = self.camera:ScreenPointToRay(target.X, target.Y)
 
 	task.spawn(function() -- animations & sounds
 		self.animations.Local.Fire:Play()
@@ -184,7 +231,12 @@ local module = function(self)
 		playSoundServer:FireServer(fireSound, player.Character.Head)
 	end)
 
-	task.spawn(function() -- bullet registration
+	task.spawn(function() -- recoil & bullet registration
+		local recPatTab = getRecoilPatternTable(self)
+		local target, addition = calculateRecoilVector(self, recPatTab)
+		target = calculateAccuracy(self, target)
+		shoveRecoilCamera(self, recPatTab, addition.X, addition.Y)
+		local unitRay = camera:ScreenPointToRay(target.X, target.Y)
 		local damage
 		damage, dec = wallbangRaycast(unitRay, dec, self.options.baseDamage) -- get preset damage from wallbang raycast
 		local mainResult = bulletRaycast(unitRay, dec)
