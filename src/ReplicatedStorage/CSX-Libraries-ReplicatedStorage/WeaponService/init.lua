@@ -1,6 +1,7 @@
 -- SERVICES & DEPENDENCIES --
 --
 
+local RunService = game:GetService("RunService")
 local Tween = game:GetService("TweenService")
 local RS = game:GetService("ReplicatedStorage")
 local GunsRS = RS:WaitForChild("CSX-Guns-ReplicatedStorage")
@@ -44,18 +45,34 @@ function WeaponService.VerifyWeapon(weaponName)
 end
 
 function WeaponService.AddWeapon(weaponName, player)
+	if RunService:IsClient() then
+		AddWeaponEvent:FireServer(weaponName)
+		return
+	end
 	local weaponFolders = WeaponService.VerifyWeapon(weaponName) -- Models, Sounds, Animations, Options
 	if weaponFolders then
+		
+		local weaponInfoTable = {}
+		weaponInfoTable.optionsScript = weaponFolders.Options
+		local opdep = require(weaponInfoTable.optionsScript)
+		local invType = opdep.inventoryType
+
+		local toolToDestroy = false -- clear current inventory slot
+		toolToDestroy = CheckInventoryForWeaponToolInvType(player.Character, invType) or CheckInventoryForWeaponToolInvType(player.Backpack, invType)
+		if toolToDestroy then
+			WeaponService.RemoveWeapon(false, player, toolToDestroy)
+			print('destroying old slot!')
+		end
+		
+
 		local tool = Instance.new("Tool", player.Backpack)
 		tool.Name = "Tool_" .. weaponName
 		tool.RequiresHandle = false
 		local serverModel = weaponFolders.Models.Default:Clone() -- TODO: get weapon skin
 		serverModel.Parent = tool
 		serverModel.Name = "Model"
-		local weaponInfoTable = {}
 		weaponInfoTable.tool = tool
 		weaponInfoTable.serverModel = serverModel
-		weaponInfoTable.optionsScript = weaponFolders.Options
 		weaponInfoTable.animationsFolder = weaponFolders.Animations
 		weaponInfoTable.weaponName = weaponName
 		weaponInfoTable.weaponType = weaponFolders.Type
@@ -63,7 +80,7 @@ function WeaponService.AddWeapon(weaponName, player)
 		local serverScript = script:WaitForChild("WeaponServerScript"):Clone() -- generate scripts
 		serverScript.Enabled = true
 		serverScript.Parent = tool
-		for i, v in pairs({"Fire", "Reload", "CustomDamage"}) do
+		for i, v in pairs({"Fire", "Reload", "CustomDamage", "Destroy"}) do
 			Instance.new("RemoteEvent", serverScript).Name = v .. "Event"
 		end
 		local toolObject = Instance.new("ObjectValue", serverScript)
@@ -72,12 +89,55 @@ function WeaponService.AddWeapon(weaponName, player)
 		local weaponOptionsObject = Instance.new("ObjectValue", serverScript)
 		weaponOptionsObject.Name = "WeaponOptionsObject"
 		weaponOptionsObject.Value = weaponFolders.Options
-		tool:SetAttribute("Magazine", require(weaponFolders.Options).magazineSize)
-		tool:SetAttribute("TotalAmmo", require(weaponFolders.Options).totalAmmo)
+		tool:SetAttribute("Magazine", opdep.magazineSize)
+		tool:SetAttribute("TotalAmmo", opdep.totalAmmo)
 		tool:SetAttribute("WeaponName", weaponName)
+		tool:SetAttribute("InventoryType", invType)
+
+		return true
 	end
 	print("Unable to add weapon " .. weaponName .. "!")
 	return false
+end
+
+local function isWeaponTool(instance, weaponName)
+	if instance:IsA("Tool") then
+		local att = instance:GetAttribute("WeaponName")
+		if att == weaponName then
+			return true
+		end
+	end
+end
+
+local function CheckInventoryForWeaponTool(inventory, weaponName)
+	local tool = false
+	for i, v in pairs(inventory:GetChildren()) do
+		if isWeaponTool(v, weaponName) then
+			tool = v
+			break
+		end
+	end
+	return tool
+end
+
+function CheckInventoryForWeaponToolInvType(inventory, invType)
+	local tool = false
+	for i, v in pairs(inventory:GetChildren()) do
+		if v:IsA("Tool") and v:GetAttribute("InventoryType") == invType then
+			tool = v
+			break
+		end
+	end
+	return tool
+end
+
+function WeaponService.RemoveWeapon(weaponName, player, givenTool)
+	local tool = givenTool or CheckInventoryForWeaponTool(player.Backpack, weaponName) or CheckInventoryForWeaponTool(player.Character, weaponName)
+	if tool then
+		tool.WeaponServerScript.DestroyEvent:FireClient(player)
+		task.wait(.1)
+		tool:Destroy()
+	end
 end
 
 function WeaponService.CreateBulletHole(result)
@@ -116,6 +176,17 @@ function WeaponService.CreateBullet(startPos, endPos)
 	sizetween:Play()
 	tween.Completed:Wait()
 	part:Destroy()
+end
+
+-- CONNECTIONS --
+--
+
+local addWeaponEventConn = false
+
+if RunService:IsServer() and not addWeaponEventConn then
+	addWeaponEventConn = script:WaitForChild("AddWeapon").OnServerEvent:Connect(function(player, weaponName)
+		WeaponService.AddWeapon(weaponName, player)
+	end)
 end
 
 return WeaponService

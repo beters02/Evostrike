@@ -67,19 +67,18 @@ function module.equip(self)
 	task.delay(self.options.pulloutRate, function() -- equipping cooldown
 		self.equipping = false
 		self.player.Character:SetAttribute("equipping", false)
+		self.equipped = true
 	end)
 
 	if self.clientModel then self.clientModel:Destroy() end -- create client model
-	self.clientModel = self.serverModel:Clone() 
-	
-	task.spawn(function() -- weapon transparency
-		transparency(vm, 1)
-		transparency(self.serverModel, 1)
-		transparency(self.serverModel.GunComponents.WeaponHandle, 1)
-		transparency(self.clientModel, 1)
-		self.clientModel.Parent = vm:WaitForChild("Equipped")
-		task.wait(.1)
-		task.wait(.1)
+	self.clientModel = self.serverModel:Clone()
+	transparency(vm, 1)
+	transparency(self.serverModel, 1)
+	transparency(self.serverModel.GunComponents.WeaponHandle, 1)
+	transparency(self.clientModel, 1)
+	self.clientModel.Parent = vm:WaitForChild("Equipped")
+
+	task.delay(.1, function()
 		local gunComp = self.clientModel:FindFirstChild("GunComponents")
 		if gunComp then transparency(self.clientModel, 0, {["WeaponHandle"] = gunComp}) end
 		transparency(vm, 0, {["HumanoidRootPart"] = vm.HumanoidRootPart, ["CameraBone"] = vm.CameraBone})
@@ -115,6 +114,9 @@ function module.equip(self)
 end
 
 function module.unequip(self)
+	self.equipped = false
+	self.equipping = false
+	self.reloading = false
 	movementOptions.walkSpeed = movementOptions.defaultWalkSpeed --walk speed
 	local vm = self.camera.viewModel
 	vm.Equipped:ClearAllChildren() --destroy vm model
@@ -136,10 +138,10 @@ function module.reload(self)
 	task.delay(self.options.reloadRate, function()
 		self.reloading = false
 		self.reloadEvent:FireServer()
-		print('fired!')
 	end)
 
 	self.animations.Local.Reload:Play()
+	self.animations.server.Pullout:Play()
 
 end
 

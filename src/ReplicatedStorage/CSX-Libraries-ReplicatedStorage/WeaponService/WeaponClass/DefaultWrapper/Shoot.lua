@@ -128,13 +128,14 @@ end
 
 local function wallbangRaycast(unitRay, dec, damage)
 	
+	local newDec = dec
 	local hasHit = false
-	local wallsHit = false
+	local wallsHit = {}
 
 	local cast = function()
 		local params = RaycastParams.new()
 		params.FilterType = Enum.RaycastFilterType.Blacklist
-		params.FilterDescendantsInstances = dec
+		params.FilterDescendantsInstances = newDec
 		params.CollisionGroup = "bullets"
 		local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 500, params)
 		if not result then hasHit = false return end
@@ -144,7 +145,7 @@ local function wallbangRaycast(unitRay, dec, damage)
 		if bangable then
 			--gunShootEvent:FireServer(weaponInformation, damage, result.Instance, result.Position, result.Normal, result.Distance, result.Material)
 			table.insert(wallsHit, {result.Instance, bangable})
-			table.insert(dec, result.Instance)
+			table.insert(newDec, result.Instance)
 			if result.Instance.Parent.Name ~= "BulletClipBoxes" then
 				WeaponService.CreateBulletHole(result)
 			end
@@ -163,7 +164,7 @@ local function wallbangRaycast(unitRay, dec, damage)
 		end
 	end
 
-	return damage, dec
+	return damage, newDec
 end
 
 local function bulletRaycast(unitRay, dec)
@@ -185,7 +186,7 @@ end
 local function getRecoilPatternTable(self)
 	curshots = (tick() - lastClickTick >= self.options.recoilReset and 1 or curshots + 1)
 	lastClickTick = tick()
-	local sprayPatternTable = self.options.sprayPattern[curshots]
+	local sprayPatternTable = (self.options.sprayPattern or self.options.vecPattern)[curshots]
 	self.currentBullet = curshots
 	return sprayPatternTable
 end
@@ -226,6 +227,7 @@ local module = function(self)
 
 	task.spawn(function() -- animations & sounds
 		self.animations.Local.Fire:Play()
+		self.animations.server.Fire:Play()
 		local fireSound = self.soundsFolder.Fire
 		Sound:PlayLocalSound(fireSound)
 		playSoundServer:FireServer(fireSound, player.Character.Head)

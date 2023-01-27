@@ -68,10 +68,12 @@ local function calculateDamage(instance)
 end
 
 local function setRagdollProperties(instance, norm)
-	local hitChar = instance:FindFirstAncestorWhichIsA("Model")
-	if hitChar and hitChar:FindFirstChild("Humanoid") then
-		hitChar:SetAttribute("bulletRagdollNormal", Vector3.new(-norm.X, -norm.Y + -1, -norm.Z))
-		hitChar:SetAttribute("lastHitPart", instance.Name)
+	if instance then
+		local hitChar = instance:FindFirstAncestorWhichIsA("Model")
+		if hitChar and hitChar:FindFirstChild("Humanoid") then
+			hitChar:SetAttribute("bulletRagdollNormal", Vector3.new(-norm.X, -norm.Y + -1, -norm.Z))
+			hitChar:SetAttribute("lastHitPart", instance.Name)
+		end
 	end
 end
 

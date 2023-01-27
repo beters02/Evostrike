@@ -5,10 +5,12 @@
 --
 
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local UIS = game:GetService("UserInputService")
 local RS = game:GetService("ReplicatedStorage")
 local GunsRS = RS:WaitForChild("CSX-Guns-ReplicatedStorage")
 local Libraries = RS:WaitForChild("CSX-Libraries-ReplicatedStorage")
+local Profile = require(RS:WaitForChild("CSX-Profile-ReplicatedStorage"):WaitForChild("Scripts"):WaitForChild("Modules"):WaitForChild("Profile"))
 
 local Strings = require(Libraries:WaitForChild("Strings"))
 local FESpring = require(Libraries:WaitForChild("FESpring"))
@@ -16,6 +18,7 @@ local FESpring = require(Libraries:WaitForChild("FESpring"))
 -- VARIABLES --
 --
 
+local equippedToolTable = nil
 local cameraUpdateRate = 1/60
 
 local WeaponIconsFolder = GunsRS:WaitForChild("Assets"):WaitForChild("Images"):WaitForChild("WeaponIcons")
@@ -33,6 +36,7 @@ function weapon.new(weaponInfoTable, player)
 
 	t.player = player
 	t.camera = workspace.CurrentCamera
+	t.vm = t.camera:WaitForChild("viewModel")
 	t.weaponName = weaponInfoTable.weaponName
 	t.equipped = false
 	t.equipping = false
@@ -65,11 +69,14 @@ function weapon.new(weaponInfoTable, player)
 	t.fireEvent = t.serverScript:WaitForChild("FireEvent")
 	t.reloadEvent = t.serverScript:WaitForChild("ReloadEvent")
 	t.customDamageEvent = t.serverScript:WaitForChild("CustomDamageEvent")
+	t.destroyEvent = t.serverScript:WaitForChild("DestroyEvent")
 
 	t.fireRate = t.options.fireRate
 	t.currentBullet = 1
 	t.currentMovementSpeedReduction = 0
-	
+	t.aimAlpha = Instance.new("NumberValue", t.tool)
+	t.aimAlpha.Name = "AimAlpha"
+
 	setmetatable(t, weapon)
 	t:init()
 	return t
@@ -100,6 +107,17 @@ function weapon:init()
 		icon.Name = Strings.firstToUpper(self.options.inventoryType) .. "_Icon"
 		self.icons[i] = icon
 	end
+	self.connections.other.destroy = self.destroyEvent.OnClientEvent:Connect(function()
+		self:destroy()
+		print('yes')
+	end)
+	local blackScreen = self.player.PlayerGui:WaitForChild("CSX-Guns-StarterGUI"):WaitForChild("ScopeGUI"):WaitForChild("BlackScreen")
+
+	self.aimTweens = {
+		FOVIn = TweenService:Create(self.aimAlpha.Value, TweenInfo.new(self.options.scopeRate, Enum.EasingStyle.Circular), {Value = 40}),
+		ScopeIn = TweenService:Create(blackScreen, TweenInfo.new(self.options.scopeRate, Enum.EasingStyle.Circular), {ImageTransparency = 1}),
+		ScopeOut = TweenService:Create(blackScreen, TweenInfo.new(self.options.scopeRate/2), {ImageTransparency = 0})
+	}
 end
 
 function weapon:connectActionInputs()
@@ -162,6 +180,40 @@ function weapon:cameraUpdate(dt)
 	end
 end
 
+function weapon:destroy()
+	task.spawn(function()
+		for _, tab in pairs(self.animations) do
+			for _, animation in pairs(tab) do
+				animation:Stop()
+			end
+		end
+		for _, tab in pairs(self.connections) do
+			for _, v in pairs(tab) do
+				if type(v) == "table" then
+					for _, conn in pairs(v) do
+						conn:Disconnect()
+					end
+				else
+					v:Disconnect()
+				end
+			end
+		end
+		self:disconnectActionInputs()
+		for _, icon in pairs(self.icons) do
+			icon:Destroy()
+		end
+		self.clientModel:Destroy()
+		self = nil
+	end)
+end
+
+function weapon:basicSanityCheck()
+	if self.reloading then return false end
+	if not self.equipped then return false end
+	if self.firing then return false end
+	return true
+end
+
 -- ACTION FUNCTIONS --
 --
 
@@ -174,18 +226,22 @@ end
 
 function weapon:equip(bool)
 	if bool then
+		if equippedToolTable ~= nil then
+			equippedToolTable:equip(false)
+		end
+		equippedToolTable = self;
 		(require(self.wrapper).equip or require(wrappers.Default).equip)(self)
 		self:connectActionInputs()
 	else
+		equippedToolTable = nil;
 		(require(self.wrapper).unequip or require(wrappers.Default).unequip)(self)
 		self:disconnectActionInputs()
 	end
 end
 
-
 function weapon:fire(bool)
 	if bool then
-		if tick() < self.nextFireTick then return end -- if player is on fireRate cooldown
+		if tick() < self.nextFireTick then task.wait(.05) if tick() < self.nextFireTick then return end end -- if player is on fireRate cooldown
 		if not self.equipped then return end
 		if self.reloading then return end
 		if self.tool:GetAttribute("Magazine") <= 0 then
@@ -193,11 +249,14 @@ function weapon:fire(bool)
 			return
 		end
 		if not self.options.automatic then -- non automatic weapon fire
+			self.nextFireTick = tick() + self.fireRate;
 			(require(self.wrapper).fire or require(wrappers.Default.Shoot))(self)
 			return
 		end
 		self.nextFireTick = tick() -- automatic weapon fire
+		self.firing = true
 		self.fireLoop = RunService.RenderStepped:Connect(function()
+			if not self.firing then self.fireLoop:Disconnect() return end -- THIS SHIT IS SO FUCKING IMPORTANT DO NOT TOUCH IT
 			if self.tool:GetAttribute("Magazine") <= 0 then
 				self:reload()
 				self.fireLoop:Disconnect()
@@ -209,16 +268,61 @@ function weapon:fire(bool)
 			end
 		end)
 	else
+		self.firing = false -- YOU WILL REGRET EVER BEING BORN IF YOU REMOVE THIS PIECE OF CODE
 		if self.fireLoop then self.fireLoop:Disconnect() end
 	end
 end
 
 function weapon:reload()
-	if self.reloading then return end
-	if not self.equipped then return end
-	if self.firing then return end
+	if not self:basicSanityCheck() then return end
 	if self.tool:GetAttribute("TotalAmmo") <= 0 then return end
 	(require(self.wrapper).reload or require(wrappers.Default).reload)(self)
+end
+
+local transparency = require(Libraries.Functions.transparency)
+
+function weapon:scope()
+	if not self:basicSanityCheck() then return end
+	
+	if not self.aiming then
+		self.aiming = true
+		self.aimTweens.FOVOut = TweenService:Create(self.aimAlpha.Value, TweenInfo.new(self.options.scopeRate/2), {Value = Profile.getPlayerOption(self.player, "fov")})
+		self.player.PlayerGui.HUD.Enabled = false
+
+		local fovSensCorrection = 40/require(Profile.getPlayerOption(self.player, "fov")).defaultFOV
+		UIS.MouseDeltaSensitivity = UIS.MouseDeltaSensitivity * fovSensCorrection
+
+		local vm = self.vm
+		transparency(vm, 1)
+		transparency(vm.Equipped[self.weaponName], 1, {["WeaponHandle"] = vm.Equipped[self.weaponName]:WaitForChild("GunComponents").WeaponHandle})
+
+		local scopeGui = self.player.PlayerGui["CSX-Guns-StarterGui"].ScopeGui
+		for i, v in pairs({"ScopeImage", "BlackScreen"}) do
+			local g = scopeGui[v]
+			g.ImageTransparency = 0
+			g.Enabled = true
+		end
+
+		-- todo: play aim in sound
+		self.aimTweens.FOVIn:Play()
+		self.aimTweens.ScopeIn:Play()
+	
+	else
+		self.aiming = false
+		UIS.MouseDeltaSensitivity = 1
+		self.player.PlayerGui.HUD.Enabled = true
+		local vm = self.vm
+		transparency(vm, 0)
+		transparency(vm.Equipped[self.weaponName], 0, {["WeaponHandle"] = vm.Equipped[self.weaponName]:WaitForChild("GunComponents").WeaponHandle})
+		local scopeGui = self.player.PlayerGui["CSX-Guns-StarterGui"].ScopeGui
+		for i, v in pairs({"ScopeImage", "BlackScreen"}) do
+			local g = scopeGui[v]
+			g.ImageTransparency = 1
+			g.Enabled = false
+		end
+		self.aimTweens.FOVOut:Play()
+		self.aimTweens.ScopeOut:Play()
+	end
 end
 
 return weapon
