@@ -161,7 +161,7 @@ local function start()
 	DefendTeam.Parent = Teams
 	local teamAssignPlayers = shuffle(globals.players)
     local index = 0
-    for i, v in pairs({gamemodeVars.teamAssignPlayers}) do
+    for i, v in pairs(gamemodeVars.teamAssignPlayers) do
         index+=1
         if index > 2 then
             local newIndex = index - 2
