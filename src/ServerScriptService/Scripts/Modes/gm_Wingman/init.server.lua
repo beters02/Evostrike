@@ -153,27 +153,27 @@ local function round(roundNumber) -- to start a round at round 1, call round(). 
 end
 
 local function start()
-	local teamAssignPlayers = shuffle(globals.players)
-	gamemodeVars.teams.attack[1] = teamAssignPlayers[1]
-	playerData[teamAssignPlayers[1].Name].Team = "attack"
-	gamemodeVars.teams.attack[2] = teamAssignPlayers[2]
-	playerData[teamAssignPlayers[2].Name].Team = "attack"
-	gamemodeVars.teams.defend[1] = teamAssignPlayers[3]
-	playerData[teamAssignPlayers[3].Name].Team = "defend"
-	gamemodeVars.teams.defend[2] = teamAssignPlayers[4]
-	playerData[teamAssignPlayers[4].Name].Team = "defend"
-	local AttackTeam = Instance.new("Team")
+    local AttackTeam = Instance.new("Team")
 	AttackTeam.TeamColor.Color = Color3.new(1, 0, 0.117647)
 	AttackTeam.Parent = Teams
-	for i, plr in pairs(gamemodeVars.teams.attack) do
-		plr.Team = AttackTeam
-	end
-	local DefendTeam = Instance.new("Team")
+    local DefendTeam = Instance.new("Team")
 	DefendTeam.TeamColor.Color = Color3.new(0.333333, 0.666667, 1)
 	DefendTeam.Parent = Teams
-	for i, plr in pairs(gamemodeVars.teams.defend) do
-		plr.Team = DefendTeam
-	end
+	local teamAssignPlayers = shuffle(globals.players)
+    local index = 0
+    for i, v in pairs({gamemodeVars.teamAssignPlayers}) do
+        index+=1
+        if index > 2 then
+            local newIndex = index - 2
+            gamemodeVars.teams.defend[newIndex] = v
+            playerData[v.Name].Team = "Defend"
+            v.Team = DefendTeam
+        else
+            gamemodeVars.teams.attack[index] = v
+            playerData[v.Name].Team = "Attack"
+            v.Team = AttackTeam
+        end
+    end
 	round()
 end
 
