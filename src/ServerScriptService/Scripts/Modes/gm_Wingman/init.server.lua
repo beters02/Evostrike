@@ -5,27 +5,46 @@ local RS = game:GetService("ReplicatedStorage")
 local Run = game:GetService("RunService")
 local Teams = game:GetService("Teams")
 local GameRS = RS:WaitForChild("CSX-Game-ReplicatedStorage")
+local GunsRS = RS:WaitForChild("CSX-Guns-ReplicatedStorage")
+local Libraries = RS:WaitForChild("CSX-Libraries-ReplicatedStorage")
 local Gamespace = workspace:WaitForChild("CSX-Game-Workspace")
 local Temp = GameRS:WaitForChild("Temp")
 local Timer = require(GameRS:WaitForChild("Scripts"):WaitForChild("Modules"):WaitForChild("Timer"))
 local Settings = require(script:WaitForChild("Settings"))
-local GamemodeEvents = script:WaitForChild("Events")
+local GamemodeEvents = GameRS:WaitForChild("Events"):WaitForChild("Wingman")
 local WingmanGamemodeData = GameRS:WaitForChild("Temp"):WaitForChild("WingmanGamemodeData")
+local Strings = require(Libraries:WaitForChild("Strings"))
+local GameSounds = GameRS:WaitForChild("Assets"):WaitForChild("Sounds")
+local collision = require(Libraries:WaitForChild("Functions"):WaitForChild("collision"))
+local weaponClass = require(GunsRS.Scripts.Modules.Weapon)
+
+local BarriersFolder = script:WaitForChild("Barriers")
+local ObjectsFolder = script:WaitForChild("Objects")
+local TeamObjectsFolder = ObjectsFolder:WaitForChild("Teams")
+local BombFolder = ObjectsFolder:WaitForChild("Bomb")
+local BombModel = BombFolder:WaitForChild("Bomb")
+local DefaultAttackTeam = TeamObjectsFolder:WaitForChild("Attacker")
+local DefaultDefendTeam = TeamObjectsFolder:WaitForChild("Defender")
+local abilityUseEvent = GamemodeEvents:WaitForChild("AbilityUseEvent")
+local playSoundLocal = GunsRS:WaitForChild("Events"):WaitForChild("Remote"):WaitForChild("playSoundLocal")
 
 -- SCRIPT VAR --
 --
 
-local globals = {state = "dead", timerTime = 0, players = {}, connections = {death = {}, bomb = {plant = {}, defuse = {}}}, switches = {roundEnd = false}}
-local gamemodeVars = {state = "dead", timer = nil, round = 1, teams = {attack = {}, defend = {}}}
-local mapVars = {spawns = {attack = {}, defend = {}}}
-local events = {BombPlant = GamemodeEvents:WaitForChild("BombPlantEvent"), BombDefuse = GamemodeEvents:WaitForChild("BombDefuseEvent")}
+local globals = {state = "dead", timerTime = 0, timerLabel = "", players = {}, connections = {death = {}, bomb = {plant = {}, defuse = {}}, timerChanged = nil}, switches = {roundEnd = false}}
+local gamemodeVars = {state = "dead", timer = nil, round = 1, teams = {attack = {}, defend = {}}, score = {attack = 0, defend = 0}}
+local mapVars = {spawns = {attack = {}, defend = {}, bomb = Gamespace:WaitForChild("Spawns"):WaitForChild("BombSpawn")}, currentBomb = nil, currentBarriers = nil}
+local events = {BombPlant = GamemodeEvents:WaitForChild("BombPlantEvent"), BombDefuse = GamemodeEvents:WaitForChild("BombDefuseEvent"), BuyMenuRemote = GamemodeEvents:WaitForChild("BuyMenu"), GetMoneyAmount = GamemodeEvents:WaitForChild("GetMoneyAmount"), GetGamemodePlayerData = GamemodeEvents:WaitForChild("GetGamemodePlayerData"), SetGamemodePlayerData = GamemodeEvents:WaitForChild("SetGamemodePlayerData")}
+local data = {replicated = nil}
+local sounds = {BombPlanted = GameSounds:WaitForChild("bombPlanted"), BombDefused = GameSounds:WaitForChild("bombDefused")}
 
 local playerData = {}
 local defaultPlayerDataTable = {
 	Team = "",
 	Money = 800,
 	Kills = 0,
-	Deaths = 0
+	Deaths = 0,
+	Inventory = {Primary = nil, Secondary = nil, MovementAbility = nil, UtilityAbility = nil}
 }
 
 -- SCRIPT FUNCTIONS --
@@ -38,39 +57,6 @@ function shuffle(x)
 		table.insert(shuffled, pos, v)
 	end
 	return shuffled
-end
-
-function checkTeamAlive(teamName)
-	if gamemodeVars.teams[teamName][1].Character.Humanoid.Health <= 0 and gamemodeVars.teams[teamName][2].Character.Humanoid.Health <= 0 then return true end
-	return false
-end
-
-function loadAllCharacters()
-	for i, plr in pairs(globals.players) do
-		if not plr.Character then plr:LoadCharacter() end
-	end
-end
-
-function randomizeTeamSpawns()
-	local newSpawns = {attack = {}, defend = {}}
-	newSpawns.attack = shuffle(mapVars.spawns.attack)
-	newSpawns.defend = shuffle(mapVars.spawns.defend)
-	return newSpawns
-end
-
-function teleportPlayersToSpawn()
-	loadAllCharacters()
-	local spawns = randomizeTeamSpawns()
-	gamemodeVars.teams.attack[1].Character.PrimaryPart.CFrame = spawns.attack[1].CFrame
-	gamemodeVars.teams.attack[2].Character.PrimaryPart.CFrame = spawns.attack[2].CFrame
-	gamemodeVars.teams.defend[1].Character.PrimaryPart.CFrame = spawns.defend[1].CFrame
-	gamemodeVars.teams.defend[2].Character.PrimaryPart.CFrame = spawns.defend[2].CFrame
-end
-
-function setAllPlayersHealth(health)
-	for i, plr in pairs(globals.players) do
-		plr.Character.Humanoid.Health = health
-	end
 end
 
 function update()
@@ -105,9 +91,10 @@ function downloadPlayerData(player)
 				newInst = Instance.new("StringValue")
 			elseif type(v) == "number" then
 				newInst = Instance.new("NumberValue")
-			end
+			else continue end
 			newInst.Name = tostring(i)
 			newInst.Value = v
+			newInst.Parent = playerFolder
 		end
 	else
 		replicatePlayerData(player)
@@ -117,12 +104,128 @@ end
 
 function replicatePlayerData(player)
 	for i, v in pairs(playerData[player.Name]) do
+		if tostring(i) == "Inventory" then continue end
 		Temp.WingmanPlayerData[player.Name][i].Value = v
+	end
+end
+
+function getMoneyAmount(player)
+	return playerData[player.Name].Money
+end
+
+function getGamemodePlayerData(player)
+	return playerData[player.Name]
+end
+
+function setGamemodePlayerData(player, newData)
+	playerData[player.Name] = newData
+	replicatePlayerData(player)
+end
+
+function useAbility(player, abilityName)
+	local abilityKey
+	for i, v in pairs(playerData[player.Name].Inventory) do
+		if v.AbilityName == abilityName then
+			abilityKey = v
+			break
+		end
+	end
+	abilityKey.Amount -= 1
+end
+
+-- GAMEMODE DATA FUNCTIONS --
+--
+
+function incrementGamemodeData(dataKey, amnt)
+	local tableKey = dataKey == "AttackScore" and "attack" or dataKey == "DefendScore" and "defend" or "CurrentRound" and "round"
+	gamemodeVars[tableKey] += amnt
+	WingmanGamemodeData[dataKey].Value += amnt
+end
+
+function setGamemodeData(dataKey, new)
+	local tableKey = (dataKey == "AttackScore" and "attack") or (dataKey == "DefendScore" and "defend") or (dataKey == "CurrentRound" and "round")
+	if tableKey then
+		gamemodeVars[tableKey] = new
+		WingmanGamemodeData[dataKey].Value = new
+	else
+		tableKey = (dataKey == "TimerValue" and "timerTime") or (dataKey == "TimerLabelValue" and "timerLabel")
+		if not tableKey then return end
+		globals[tableKey] = new
+		WingmanGamemodeData[dataKey].Value = new
 	end
 end
 
 -- GAMEMODE FUNCTIONS --
 --
+
+function checkTeamAlive(teamName)
+	if gamemodeVars.teams[teamName][1].Character.Humanoid.Health <= 0 and gamemodeVars.teams[teamName][2].Character.Humanoid.Health <= 0 then return true end
+	return false
+end
+
+function loadAllCharacters()
+	for i, plr in pairs(globals.players) do
+		if not plr.Character then plr:LoadCharacter() end
+	end
+end
+
+function randomizeTeamSpawns()
+	local newSpawns = {attack = {}, defend = {}}
+	newSpawns.attack = shuffle(mapVars.spawns.attack)
+	newSpawns.defend = shuffle(mapVars.spawns.defend)
+	return newSpawns
+end
+
+function teleportPlayersToSpawn()
+	loadAllCharacters()
+	local spawns = randomizeTeamSpawns()
+	gamemodeVars.teams.attack[1].Character.PrimaryPart.CFrame = spawns.attack[1].CFrame
+	gamemodeVars.teams.attack[2].Character.PrimaryPart.CFrame = spawns.attack[2].CFrame
+	gamemodeVars.teams.defend[1].Character.PrimaryPart.CFrame = spawns.defend[1].CFrame
+	gamemodeVars.teams.defend[2].Character.PrimaryPart.CFrame = spawns.defend[2].CFrame
+end
+
+function setAllPlayersHealth(health)
+	for i, plr in pairs(globals.players) do
+		plr.Character.Humanoid.Health = health
+	end
+end
+
+function startNewRoundTimer(length, label)
+	setGamemodeData("TimerLabelValue", label or "")
+	gamemodeVars.timer = Timer:new(length)
+	gamemodeVars.timer:start()
+	if globals.connections.timerChanged ~= nil then
+		globals.connections.timerChanged:Disconnect()
+	end
+	globals.connections.timerChanged = gamemodeVars.timer.timeChanged.Event:Connect(function()
+		setGamemodeData("TimerValue", gamemodeVars.timer.time)
+	end)
+end
+
+local function roundOverTeamWon(team)
+	incrementGamemodeData(Strings.firstToUpper(team) .. "Score", 1)
+	incrementGamemodeData("CurrentRound", 1)
+end
+
+local function spawnBomb(atOrigin)
+	mapVars.currentBomb = BombModel:Clone()
+	collision(mapVars.currentBomb, true)
+	mapVars.currentBomb.Parent = Gamespace:WaitForChild("Map")
+	if not atOrigin then
+		mapVars.currentBomb.PrimaryPart.CFrame = mapVars.spawns.bomb.CFrame
+	end
+end
+
+local function spawnBarriers()
+	mapVars.currentBarriers = BarriersFolder:Clone()
+	mapVars.currentBarriers.Parent = Gamespace
+end
+
+local function destroyBarriers()
+	mapVars.currentBarriers:Destroy()
+	mapVars.currentBarriers = nil
+end
 
 local function registerRoundKills()
 	coroutine.wrap(function()
@@ -154,7 +257,7 @@ local function registerRoundKills()
 				end
 				playerDataIncrement(killer, "Money", killerMoneyAdd)
 				if not checkTeamAlive(playerData[killed.Name].Team) then
-					-- round over, killer's team wins
+					roundOverTeamWon(playerData[killer.Name].Team) -- round over, killer's team wins
 				end
 			end))
 		end
@@ -162,21 +265,18 @@ local function registerRoundKills()
 end
 
 local function registerRoundBombPlant()
-	globals.connections.bomb.plant = events.BombPlant.OnServerEvent:Once(function()
-		gamemodeVars.timer = Timer:new(Settings.roundTimeAfterPlant)
-		gamemodeVars.timer:start()
-		local timerChangedConnection = gamemodeVars.timer.timeChanged:Connect(function() -- global timer change
-			globals.timerTime = gamemodeVars.timer.currentTime
-		end)
-		local timerStoppedConnection = gamemodeVars.timer.stopped:Once(function() -- bomb explode functionality
-			timerChangedConnection:Disconnect()
+	globals.connections.bomb.plant = events.BombPlant.Event:Once(function()
+		startNewRoundTimer(Settings.roundTimeAfterPlant)
+		playSoundLocal:FireAllClients(sounds.BombPlanted, false)
+		local timerStoppedConnection = gamemodeVars.timer.stopped.Event:Once(function() -- bomb explode functionality
 			if globals.connections.bomb.defuse ~= nil then
 				globals.connections.bomb.defuse:Disconnect()
+				roundOverTeamWon("attack")
 			end
 		end)
-		globals.connections.bomb.defuse = events.BombDefuse.OnServerEvent:Once(function() -- bomb defuse functionality
+		globals.connections.bomb.defuse = events.BombDefuse.Event:Once(function() -- bomb defuse functionality
 			timerStoppedConnection:Disconnect()
-			timerChangedConnection:Disconnect()
+			roundOverTeamWon("defend")
 		end)
 	end)
 end
@@ -190,34 +290,60 @@ local function round(roundNumber) -- to start a round at round 1, call round(). 
 	setAllPlayersHealth(100)
 	registerRoundKills()
 	registerRoundBombPlant()
-	gamemodeVars.timer = Timer:new(Settings.roundTime)
-	gamemodeVars.timer:start()
+	startNewRoundTimer(10, "In Buy Menu")
+	spawnBarriers()
+	gamemodeVars.timer.stopped:Once(function()
+		destroyBarriers()
+		startNewRoundTimer(Settings.roundTime, "In Game")
+	end)
+end
+
+local function initPlayer(player)
+	table.insert(globals.players, player)
+	playerData[player.Name] = defaultPlayerDataTable
+	for i, v in pairs({script.GUIS.HUDAddon, script.GUIS.GamemodeHUD, script.GUIS.BuyMenu}) do
+		v:Clone().Parent = player.PlayerGui
+	end
+	downloadPlayerData(player)
+	player:LoadCharacter()
+end
+
+local function initTeams()
+	local teamAssignPlayers = shuffle(globals.players)
+	local attackTeamObject = DefaultAttackTeam:Clone()
+	local defendTeamObject = DefaultDefendTeam:Clone()
+	for i = 1, #teamAssignPlayers do
+		local teamIndex = i
+		local team, teamName, teamObject = gamemodeVars.teams.attack, "attack", attackTeamObject
+		if i > 2 then
+			teamIndex-=2
+			team, teamName, teamObject = gamemodeVars.teams.defend, "defend", defendTeamObject
+		end
+		playerData[teamAssignPlayers[i].Name].Team = teamName
+		team[teamIndex] = teamAssignPlayers[i]
+		teamAssignPlayers[i].Team = teamObject
+	end
+	attackTeamObject.Parent = Teams
+	defendTeamObject.Parent = Teams
 end
 
 local function pregame()
-	local ended = false
+	local ended = true
+	local playerAddedConnection = nil
 	globals.state = "Pregame"
 	-- init players
-	local function initPlayer(player)
-		table.insert(globals.players, player)
-		playerData[player.Name] = defaultPlayerDataTable
-		for i, v in pairs({script.GUIS.HUDAddon, script.GUIS.GamemodeHUD}) do
-			v:Clone().Parent = player.PlayerGui
-		end
-		player:LoadCharacter()
-	end
 	for i, player in pairs(P:GetPlayers()) do
 		initPlayer(player)
 	end
 	if #globals.players < Settings.requiredPlayerCount then
-		P.PlayerAdded:Connect(function(player)
+		ended = false
+		playerAddedConnection = P.PlayerAdded:Connect(function(player)
 			initPlayer(player)
 			if #globals.players >= Settings.requiredPlayerCount then
 				ended = true
+				if playerAddedConnection then playerAddedConnection:Disconnect() end
 			end
 		end)
-	else
-		ended = true
 	end
 	-- load assets
 	for i, v in pairs(Gamespace:WaitForChild("Spawns"):GetChildren()) do
@@ -231,39 +357,26 @@ local function pregame()
 end
 
 local function start()
-	local teamAssignPlayers = shuffle(globals.players)
-	gamemodeVars.teams.attack[1] = teamAssignPlayers[1]
-	playerData[teamAssignPlayers[1].Name].Team = "attack"
-	gamemodeVars.teams.attack[2] = teamAssignPlayers[2]
-	playerData[teamAssignPlayers[2].Name].Team = "attack"
-	gamemodeVars.teams.defend[1] = teamAssignPlayers[3]
-	playerData[teamAssignPlayers[3].Name].Team = "defend"
-	gamemodeVars.teams.defend[2] = teamAssignPlayers[4]
-	playerData[teamAssignPlayers[4].Name].Team = "defend"
-	local AttackTeam = Instance.new("Team")
-	AttackTeam.TeamColor.Color = Color3.new(1, 0, 0.117647)
-	AttackTeam.Parent = Teams
-	for i, plr in pairs(gamemodeVars.teams.attack) do
-		plr.Team = AttackTeam
-	end
-	local DefendTeam = Instance.new("Team")
-	DefendTeam.TeamColor.Color = Color3.new(0.333333, 0.666667, 1)
-	DefendTeam.Parent = Teams
-	for i, plr in pairs(gamemodeVars.teams.defend) do
-		plr.Team = DefendTeam
-	end
+	initTeams()
 	round()
 end
 
--- INITIALIZE GAMEMODE SETTINGS --
+-- INITIALIZE GAMEMODE SETTINGS & CONNECT CONNECTIONS --
 --
 
 P.CharacterAutoLoads = false
-
 Run.Heartbeat:Connect(update)
+events.GetMoneyAmount.OnServerInvoke = getMoneyAmount
+events.GetGamemodePlayerData.OnInvoke = getGamemodePlayerData
+events.SetGamemodePlayerData.Event:Connect(setGamemodePlayerData)
+abilityUseEvent.OnServerEvent:Connect(useAbility)
 
 -- GAMEMODE LINEAR SCRIPT START --
 --
 
 pregame()
-start()
+--start()
+
+startNewRoundTimer(60, "Test")
+spawnBomb(true)
+registerRoundBombPlant()
