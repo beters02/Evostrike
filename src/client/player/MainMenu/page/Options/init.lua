@@ -2,10 +2,12 @@ local Page = require(script.Parent)
 local options = setmetatable({}, Page)
 options.__index = options
 
-local general = script:WaitForChild("General")
-local keybinds = script:WaitForChild("Keybinds")
+local g = script:WaitForChild("general")
+local k =  script:WaitForChild("keybinds")
 
-local function _compile(self)
+local function _compile(self, mainMenu)
+	local general = g
+	local keybinds = k
 	for _, child in pairs({general, keybinds}) do
 		for index, moduleElement in pairs(require(child)) do
 			self[index] = moduleElement
@@ -21,7 +23,7 @@ function options.new(mainMenu, frame)
 	local self = setmetatable(Page.new(mainMenu, frame), options)
 	
 	-- compile options page module functions
-	_compile(self)
+	_compile(self, mainMenu)
 
 	self.connections = {}
 	self.pageconnections = {}

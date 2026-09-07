@@ -18,6 +18,7 @@ local Services = ReplicatedStorage:WaitForChild("Services")
 
 local gui = script:WaitForChild("LoadingGUI")
 local player = Players.LocalPlayer
+local mainFrame = gui:WaitForChild("MainFrame")
 local hud: ScreenGui = player.PlayerGui:FindFirstChild("HUD")
 if hud then hud.Enabled = false end
 
@@ -82,7 +83,7 @@ local function intro_animation()
 	task.wait(SECOND_BLACK_SCREEN_LENGTH)
 	tweens._out1:Play()
 	tweens._out1.Completed:Wait()
-	gui.MainFrame.Frame.Visible = false
+	mainFrame.Frame.Visible = false
 	gui.IntroFrame.Visible = false
     if loading then
         tweens._in:Play()
@@ -103,7 +104,7 @@ local function intro_finished_animation()
         tweens._out1:Play()
         tweens._out1.Completed:Wait()
     end
-    gui.MainFrame.Visible = false
+    mainFrame.Visible = false
     gui.TeamFrame.Visible = false
     gui.IntroFrame.Visible = false
 	tweens._out2:Play()
@@ -131,14 +132,14 @@ end
 function INIT()
 
     --prepare loading screen
-    gui.MainFrame.LoadingText.Text = "Loading Map..."
+    mainFrame.LoadingText.Text = "Loading Map..."
     gui.Parent = Players.LocalPlayer.PlayerGui -- give player gui
 
     -- preare intro screen
     intro:Play() -- play intro music
     gui.IntroFrame.Visible = true
     gui.BlackFrame.Visible = true
-    gui.MainFrame.Visible = true
+    mainFrame.Visible = true
     gui.BlackFrame.BackgroundTransparency = 0
     gui.TeamFrame.Visible = false
 
@@ -165,15 +166,15 @@ function START()
     while loading do
         print('loading map assets')
         local count = #preloads.map
-        gui.MainFrame.LoadingText.Text = "Loading Map: 0" .. "/" .. tostring(count)
+        mainFrame.LoadingText.Text = "Loading Map: 0" .. "/" .. tostring(count)
         for i = 1, count do
-            gui.MainFrame.LoadingText.Text = "Loading Map: " .. tostring(i) .. "/" .. tostring(count)
+            mainFrame.LoadingText.Text = "Loading Map: " .. tostring(i) .. "/" .. tostring(count)
             ContentProvider:PreloadAsync({preloads.map[i]})
         end
     
         -- load game assets
         print('loading game assets')
-        gui.MainFrame.LoadingText.Text = "Loading Game Assets... "
+        mainFrame.LoadingText.Text = "Loading Game Assets... "
         for _, parent in pairs(decToLoad) do
             ContentProvider:PreloadAsync(parent:GetDescendants())
         end

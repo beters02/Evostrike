@@ -56,6 +56,7 @@ local MainMenu = {
 
 -- Initialize Pages, Sounds and GamemodeService
 function MainMenu:Initialize(gui)
+    print("initting penis")
     self.Gui = gui
     self.IsTopBarOpen = false
     --self.CurrentMenuType = GamemodeService:GetMenuType()

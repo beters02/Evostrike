@@ -21,6 +21,9 @@ local PlayerAttributes = require(Framework.Module.PlayerAttributes)
 local plr = Players.LocalPlayer
 local currentStoredDamageInfo = false
 
+local MainMenuModule = require(plr.PlayerScripts:WaitForChild("MainMenu"))
+--MainMenuModule:Initialize()
+
 local storedPlayers = {}
 
 local Ragdolls = {
